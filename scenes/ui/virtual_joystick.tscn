@@ -1,0 +1,21 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/virtual_joystick.gd" id="1_joy"]
+[ext_resource type="Texture2D" path="res://assets/sprites/ui/joystick_base.png" id="2_base"]
+[ext_resource type="Texture2D" path="res://assets/sprites/ui/joystick_tip.png" id="3_tip"]
+
+[node name="VirtualJoystick" type="Control"]
+custom_minimum_size = Vector2(160, 160)
+layout_mode = 3
+anchors_preset = 0
+offset_right = 160.0
+offset_bottom = 160.0
+script = ExtResource("1_joy")
+
+[node name="BaseSprite" type="Sprite2D" parent="."]
+position = Vector2(80, 80)
+texture = ExtResource("2_base")
+
+[node name="TipSprite" type="Sprite2D" parent="."]
+position = Vector2(80, 80)
+texture = ExtResource("3_tip")
