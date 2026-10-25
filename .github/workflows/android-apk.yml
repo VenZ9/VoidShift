@@ -1,0 +1,143 @@
+name: Android Debug Export
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  android-debug-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      # Pinned to Godot 4.3 stable: the project's application/features is "4.3"
+      # and export templates must match the editor version exactly.
+      GODOT_VERSION: "4.3-stable"
+      GODOT_EDITOR_ZIP_URL: "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip"
+      GODOT_TEMPLATES_TPZ_URL: "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz"
+      ANDROID_API: "34"        # matches export preset package/target_sdk
+      ANDROID_BUILD_TOOLS: "34.0.0"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform, platform-tools and build tools
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses </dev/null >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "platforms;android-${ANDROID_API}" "build-tools;${ANDROID_BUILD_TOOLS}"
+
+      - name: Restore Godot editor and export templates cache
+        id: godot_cache
+        uses: actions/cache@v4
+        with:
+          key: godot-4.3-stable-linux-x86_64-templates-v1
+          path: |
+            ~/godot-ci
+            ~/.local/share/godot/export_templates
+
+      - name: Download Godot 4.3-stable editor and matching export templates
+        if: steps.godot_cache.outputs.cache-hit != 'true'
+        run: |
+          rm -rf "$HOME/godot-ci"
+          rm -rf "$HOME/.local/share/godot/export_templates"
+          mkdir -p "$HOME/godot-ci/src" "$HOME/.local/share/godot/export_templates"
+          curl -L --retry 3 --fail -o /tmp/editor.zip "$GODOT_EDITOR_ZIP_URL"
+          curl -L --retry 3 --fail -o /tmp/templates.tpz "$GODOT_TEMPLATES_TPZ_URL"
+          unzip -q -o /tmp/editor.zip -d "$HOME/godot-ci/src"
+          mv "$HOME/godot-ci/src/Godot_v${GODOT_VERSION}_linux.x86_64" "$HOME/godot-ci/godot"
+          chmod +x "$HOME/godot-ci/godot"
+          unzip -q /tmp/templates.tpz -d /tmp/tpz
+          mv /tmp/tpz/templates "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}"
+          rm -rf /tmp/tpz /tmp/editor.zip /tmp/templates.tpz
+
+      - name: Verify editor version and android template presence
+        run: |
+          "$HOME/godot-ci/godot" --version
+          test -f "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}/android_debug.apk" \
+            || { echo "android_debug.apk template missing for ${GODOT_VERSION}"; exit 1; }
+          ls -lh "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}/" | grep android
+
+      - name: Generate fresh debug keystore
+        run: |
+          mkdir -p "$HOME/.android"
+          rm -f "$HOME/.android/debug.keystore"
+          keytool -genkeypair -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android -keypass android \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US" 2>&1 | tail -3
+
+      - name: Clean project import (regenerates .godot class cache and imports)
+        run: |
+          rm -rf .godot
+          "$HOME/godot-ci/godot" --headless --import --path . 2>&1 | tee import.log
+          if grep -qi "script error" import.log; then
+            echo "Project import reported script errors:"
+            grep -i "script error" import.log
+            exit 1
+          fi
+
+      - name: Run regression test suite (89 assertions, 17 groups)
+        run: |
+          "$HOME/godot-ci/godot" --headless --path . scenes/tests/test_runner_scene.tscn 2>&1 | tee test.log
+          if grep -q "\[FAIL\]" test.log; then
+            echo "Regression suite reported failures:"
+            grep "\[FAIL\]" test.log
+            exit 1
+          fi
+
+      - name: Inject debug keystore into export preset (CI-only, not committed)
+        run: |
+          KST="$HOME/.android/debug.keystore"
+          sed -i "s|^keystore/debug=\"\"|keystore/debug=\"$KST\"|" export_presets.cfg
+          sed -i "s|^keystore/debug_user=\"\"|keystore/debug_user=\"androiddebugkey\"|" export_presets.cfg
+          sed -i "s|^keystore/debug_password=\"\"|keystore/debug_password=\"android\"|" export_presets.cfg
+          grep '^keystore/' export_presets.cfg
+
+      - name: Export Android debug APK
+        run: |
+          set -o pipefail
+          mkdir -p build
+          "$HOME/godot-ci/godot" --headless --path . --export-debug "Android" build/VoidShift.apk 2>&1 | tee export.log
+
+      - name: Restore pristine export_presets.cfg
+        if: always()
+        run: git checkout -- export_presets.cfg
+
+      - name: Verify APK exists and is a valid zip
+        run: |
+          ls -lh build/
+          test -s build/VoidShift.apk
+          file build/VoidShift.apk
+          unzip -l build/VoidShift.apk | head -8
+
+      - name: Upload APK artifact (download from workflow run page)
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoidShift-debug-apk
+          path: build/VoidShift.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-export-logs
+          path: |
+            import.log
+            test.log
+            export.log
+          if-no-files-found: ignore
+          retention-days: 7

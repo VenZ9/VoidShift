@@ -61,14 +61,25 @@ Use the open airlock at a room edge to continue.
 
 ## Android build blockers (as of this handoff)
 
-1. **Export templates missing**: `~/.local/share/godot/export_templates/4.3.stable/`
-   (android_debug.apk / android_release.apk). Download the 4.3 templates bundle from
-   godotengine.org (`Godot_v4.3-stable_export_templates.tpz`) and unpack the android
-   templates into that folder (or use a GitHub Actions `godot-export` workflow).
-2. **Android SDK missing**: Editor Settings → Export → Android needs a valid SDK path
-   (build-tools, platform-tools) plus JDK 17+ — JDK 21 and gradle are already available.
-3. **Keystore**: `export_presets.cfg` has no release keystore; a debug build only
-   requires `~/.android/debug.keystore` from the SDK build-tools' `keytool`.
+Local on-device building remains blocked (no export templates/SDK), but CI now covers
+the build: `.github/workflows/android-apk.yml` produces a debug-installable APK on
+every push to `master` and on manual runs.
+
+**Artifact retrieval:**
+1. Repo → **Actions** tab → select the latest **Android Debug Export** run.
+2. The run summary lists an artifact named **`VoidShift-debug-apk`**.
+3. Download it; the zip archive contains **`VoidShift.apk`** at its root.
+   Sideload on a device after enabling unknown-app installs.
+4. Manual re-build: **Actions → Android Debug Export → Run workflow** (branch `master`).
+5. Artifacts are kept for **14 days**; failure logs (`import.log`, `test.log`,
+   `export.log`) are uploaded for 7 days when a step fails.
+
+**CI pipeline order:** checkout → JDK 17 + Android SDK (API 34, build-tools 34.0.0) →
+fetch pinned Godot **4.3-stable** editor + matching templates (cached) → fresh debug
+keystore → clean `--import` → regression suite (fails on any `[FAIL]`) → keystore
+injection into the preset (CI-only, reverted before commit) → `--export-debug
+"Android" build/VoidShift.apk` → artifact upload. Template/editor versions are pinned
+together in the workflow `env` block and must be changed in lockstep.
 
 ## Known limits and next work
 

@@ -116,3 +116,24 @@ all threats, defeats the boss, and verifies the VICTORY state persists to disk.
 - **Pixel Art Filter**: Nearest (`textures/canvas_textures/default_texture_filter=0`)
 - **Offline**: Zero external network dependencies, no telemetry, no paid APIs.
 - **Storage**: Clean local JSON persistence via `user://savegame.json` and `user://settings.json`.
+
+## 🏗️ Android Debug APK via GitHub Actions
+
+`.github/workflows/android-apk.yml` builds an installable **debug APK** on every push
+to `master` (and via manual `workflow_dispatch`). It pins the **Godot 4.3-stable**
+Linux editor and the **matching 4.3-stable export templates**, runs a clean
+`--import`, executes the full regression suite, and only then exports the existing
+`Android` preset. The debug keystore used for signing is generated fresh in CI and
+is never committed.
+
+### How to download the APK artifact
+
+1. Open **https://github.com/VenZ9/VoidShift/actions**.
+2. Click the latest **Android Debug Export** run (green check). For a manual build:
+   "Run workflow" → keep `master` → **Run workflow**.
+3. Scroll to the **Artifacts** section at the bottom of the run summary page.
+4. Click **`VoidShift-debug-apk`** — your browser downloads `VoidShift-debug-apk.zip`,
+   whose root contains **`VoidShift.apk`**. Artifacts are retained for **14 days**.
+5. Transfer the APK to your Android device, allow "Install unknown apps" for the file
+   manager, and install. It is a debug-signed build (`org.voidshift.game`).
+
