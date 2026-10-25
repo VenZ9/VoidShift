@@ -11,11 +11,13 @@ jobs:
     timeout-minutes: 60
 
     env:
-      # Pinned to Godot 4.3 stable: the project's application/features is "4.3"
-      # and export templates must match the editor version exactly.
-      GODOT_VERSION: "4.3-stable"
+      # Release tag (hyphen) vs templates directory godot expects (dot):
+      # tags: .../tag/4.3-stable, but export templates MUST live in
+      # ~/.local/share/godot/export_templates/4.3.stable/ (dots).
+      GODOT_TAG: "4.3-stable"
       GODOT_EDITOR_ZIP_URL: "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip"
       GODOT_TEMPLATES_TPZ_URL: "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz"
+      GODOT_TEMPLATES_DIR: "4.3.stable"  # editor's expected export_templates subdir
       ANDROID_API: "34"        # matches export preset package/target_sdk
       ANDROID_BUILD_TOOLS: "34.0.0"
 
@@ -45,7 +47,7 @@ jobs:
         id: godot_cache
         uses: actions/cache@v4
         with:
-          key: godot-4.3-stable-linux-x86_64-templates-v1
+          key: godot-4.3-stable-linux-x86_64-templates-v2
           path: |
             ~/godot-ci
             ~/.local/share/godot/export_templates
@@ -59,18 +61,18 @@ jobs:
           curl -L --retry 3 --fail -o /tmp/editor.zip "$GODOT_EDITOR_ZIP_URL"
           curl -L --retry 3 --fail -o /tmp/templates.tpz "$GODOT_TEMPLATES_TPZ_URL"
           unzip -q -o /tmp/editor.zip -d "$HOME/godot-ci/src"
-          mv "$HOME/godot-ci/src/Godot_v${GODOT_VERSION}_linux.x86_64" "$HOME/godot-ci/godot"
+          mv "$HOME/godot-ci/src/Godot_v${GODOT_TAG}_linux.x86_64" "$HOME/godot-ci/godot"
           chmod +x "$HOME/godot-ci/godot"
           unzip -q /tmp/templates.tpz -d /tmp/tpz
-          mv /tmp/tpz/templates "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}"
+          mv /tmp/tpz/templates "$HOME/.local/share/godot/export_templates/${GODOT_TEMPLATES_DIR}"
           rm -rf /tmp/tpz /tmp/editor.zip /tmp/templates.tpz
 
       - name: Verify editor version and android template presence
         run: |
           "$HOME/godot-ci/godot" --version
-          test -f "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}/android_debug.apk" \
-            || { echo "android_debug.apk template missing for ${GODOT_VERSION}"; exit 1; }
-          ls -lh "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}/" | grep android
+          test -f "$HOME/.local/share/godot/export_templates/${GODOT_TEMPLATES_DIR}/android_debug.apk" \
+            || { echo "android_debug.apk template missing for ${GODOT_TEMPLATES_DIR}"; exit 1; }
+          ls -lh "$HOME/.local/share/godot/export_templates/${GODOT_TEMPLATES_DIR}/" | grep android
 
       - name: Generate fresh debug keystore
         run: |
